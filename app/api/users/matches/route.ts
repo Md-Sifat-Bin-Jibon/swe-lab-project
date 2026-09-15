@@ -1,0 +1,31 @@
+import { NextResponse } from "next/server";
+import { requireUserId } from "@/lib/auth";
+import { getDb } from "@/lib/db";
+import {
+  formatMatchProfile,
+  getUserSkills,
+  type UserRow,
+} from "@/lib/format";
+import { rankProfiles } from "@/lib/matches";
+import { loadSessionUser } from "@/lib/users";
+
+export const runtime = "nodejs";
+
+export async function GET(request: Request) {
+  const auth = requireUserId(request);
+  if ("response" in auth) return auth.response;
+
+  const db = getDb();
+  const user = loadSessionUser(db, auth.userId);
+  const rows = db
+    .prepare(
+      "SELECT * FROM users WHERE is_browseable = 1 AND id != ? ORDER BY full_name"
+    )
+    .all(auth.userId) as UserRow[];
+
+  const profiles = rows.map((row) =>
+    formatMatchProfile(row, getUserSkills(db, row.id))
+  );
+
+  return NextResponse.json({ matches: rankProfiles(profiles, user) });
+}
