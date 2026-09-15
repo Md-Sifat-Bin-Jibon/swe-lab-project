@@ -1,5 +1,4 @@
 "use client";
-
 const filterIcon = (
   <svg
     className="h-5 w-5"
