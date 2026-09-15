@@ -1,5 +1,4 @@
 "use client";
-
 import type { MatchProfile } from "@/types";
 import { MatchCard } from "@/features/browse/MatchCard";
 
