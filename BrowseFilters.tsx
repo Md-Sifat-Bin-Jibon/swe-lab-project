@@ -11,7 +11,6 @@ const filterIcon = (
     <path d="M4 6h16M6 12h12M10 18h4" strokeLinecap="round" />
   </svg>
 );
-
 const searchIcon = (
   <svg
     className="h-5 w-5 text-slate-400"
