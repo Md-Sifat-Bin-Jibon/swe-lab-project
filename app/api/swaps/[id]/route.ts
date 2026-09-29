@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUserId } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { formatSwapWithProfile, getParticipantSwap } from "@/lib/swaps";
+import { formatSwapWithProfile, getParticipantSwap, getSwapOffers } from "@/lib/swaps";
 
 export const runtime = "nodejs";
 
@@ -22,6 +22,9 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   return NextResponse.json({
-    swap: formatSwapWithProfile(db, row, auth.userId),
+    swap: {
+      ...formatSwapWithProfile(db, row, auth.userId),
+      history: getSwapOffers(db, row.id, auth.userId),
+    },
   });
 }

@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { requireUserId } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { acceptProposal } from "@/lib/swaps";
+import { acceptProposal, SwapActionError } from "@/lib/swaps";
+import { generateSwapTasks, markTasksPending } from "@/lib/swapTasks";
 
 export const runtime = "nodejs";
 
@@ -15,7 +16,15 @@ export async function POST(request: Request, context: RouteContext) {
 
   const { id } = await context.params;
   const db = getDb();
-  const swap = acceptProposal(db, auth.userId, id);
+  let swap: ReturnType<typeof acceptProposal>;
+  try {
+    swap = acceptProposal(db, auth.userId, id);
+  } catch (error) {
+    if (error instanceof SwapActionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
 
   if (!swap) {
     return NextResponse.json(
@@ -26,6 +35,11 @@ export async function POST(request: Request, context: RouteContext) {
       { status: 404 }
     );
   }
+
+  // Both people get an AI-generated to-do plan; build it after responding
+  // so accepting stays instant.
+  markTasksPending(db, swap.id);
+  after(() => generateSwapTasks(db, swap.id));
 
   return NextResponse.json({ swap });
 }
