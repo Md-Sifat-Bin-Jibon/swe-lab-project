@@ -11,7 +11,7 @@ import {
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/useToast";
-import { verifyOtp } from "@/services/api";
+import { resendOtp, verifyOtp } from "@/services/api";
 
 const TIMER_SECONDS = 59;
 const OTP_LENGTH = 6;
@@ -55,6 +55,7 @@ export function OtpCard() {
   );
   const [secondsLeft, setSecondsLeft] = useState(TIMER_SECONDS);
   const [submitting, setSubmitting] = useState(false);
+  const [resending, setResending] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const timerId = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -133,11 +134,31 @@ export function OtpCard() {
     inputRefs.current[nextIndex]?.focus();
   }
 
-  function handleResend() {
-    setDigits(Array(OTP_LENGTH).fill(""));
-    inputRefs.current[0]?.focus();
-    startTimer();
-    showToast("Code resent. Demo OTP is 123456.");
+  async function handleResend() {
+    if (!email) {
+      showToast("Missing email. Please register again.");
+      router.push("/signup");
+      return;
+    }
+
+    setResending(true);
+    try {
+      const result = await resendOtp({ email });
+      setDigits(Array(OTP_LENGTH).fill(""));
+      inputRefs.current[0]?.focus();
+      startTimer();
+      showToast(
+        result.devOtp
+          ? `Dev mode (no SMTP): your code is ${result.devOtp}`
+          : `A new code has been sent to ${email}.`
+      );
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : "Could not resend the code."
+      );
+    } finally {
+      setResending(false);
+    }
   }
 
   async function handleContinue() {
@@ -229,10 +250,15 @@ export function OtpCard() {
         <div className="text-center">
           <button
             type="button"
-            className="text-sm font-semibold text-swapspot-blue transition hover:underline"
+            className="text-sm font-semibold text-swapspot-blue transition hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
             onClick={handleResend}
+            disabled={resending || secondsLeft > 0}
           >
-            Resend Code
+            {resending
+              ? "Sending…"
+              : secondsLeft > 0
+                ? `Resend Code in ${secondsLeft}s`
+                : "Resend Code"}
           </button>
         </div>
 

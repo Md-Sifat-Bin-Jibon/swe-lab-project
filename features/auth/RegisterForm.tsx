@@ -41,11 +41,16 @@ export function RegisterForm() {
     setSubmitting(true);
 
     try {
-      await register({
+      const result = await register({
         email: trimmedEmail,
         password,
         username: trimmedUsername,
       });
+      if (!result.emailSent) {
+        showToast(result.message);
+      } else if (result.devOtp) {
+        showToast(`Dev mode (no SMTP): your code is ${result.devOtp}`);
+      }
       sessionStorage.setItem("swapspotEmail", trimmedEmail);
       router.push(`/otp?email=${encodeURIComponent(trimmedEmail)}`);
     } catch (error) {

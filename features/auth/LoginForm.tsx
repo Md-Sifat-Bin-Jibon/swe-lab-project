@@ -79,12 +79,12 @@ export function LoginForm() {
             />
 
             <div className="text-right">
-              <a
-                href="#"
+              <Link
+                href="/forgot-password"
                 className="text-sm font-medium text-swapspot-blue transition hover:underline"
               >
                 Forgot Password?
-              </a>
+              </Link>
             </div>
 
             <Button

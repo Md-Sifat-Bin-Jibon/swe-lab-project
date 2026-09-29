@@ -6,6 +6,13 @@ import type {
   SwapsPayload,
   Conversation,
   ChatMessage,
+  Meeting,
+  ProfileStats,
+  Project,
+  SwapOfferEntry,
+  SwapTasksPayload,
+  VerificationStatus,
+  WalletTransaction,
 } from "@/types";
 
 const API_BASE = "/api";
@@ -108,8 +115,42 @@ export async function register(input: {
   email: string;
   password: string;
   username?: string;
-}): Promise<{ message: string; email: string; demoOtp: string }> {
+}): Promise<{
+  message: string;
+  email: string;
+  emailSent: boolean;
+  devOtp?: string;
+}> {
   return request("/auth/register", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function resendOtp(input: {
+  email: string;
+}): Promise<{ message: string; devOtp?: string }> {
+  return request("/auth/resend-otp", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function forgotPassword(input: {
+  email: string;
+}): Promise<{ message: string; devOtp?: string }> {
+  return request("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function resetPassword(input: {
+  email: string;
+  code: string;
+  password?: string;
+}): Promise<{ ok: true; valid?: boolean; message?: string }> {
+  return request("/auth/reset-password", {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -151,6 +192,97 @@ export async function logout(): Promise<{ ok: boolean }> {
   });
   clearSession();
   return result;
+}
+
+export async function fetchProfileStats(): Promise<ProfileStats> {
+  const result = await request<{ stats: ProfileStats }>("/users/me/stats");
+  return result.stats;
+}
+
+export async function fetchVerification(): Promise<VerificationStatus> {
+  const result = await request<{ verification: VerificationStatus }>("/verification");
+  return result.verification;
+}
+
+/** Uploads passport images as multipart (no JSON content-type). */
+export async function submitVerification(front: File, back: File): Promise<VerificationStatus> {
+  const form = new FormData();
+  form.append("front", front);
+  form.append("back", back);
+  const token = getToken();
+  const response = await fetch(`${API_BASE}/verification`, {
+    method: "POST",
+    body: form,
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { verification?: VerificationStatus; error?: string }
+    | null;
+  if (!response.ok || !payload?.verification) {
+    throw new ApiError(payload?.error || "Upload failed.", response.status);
+  }
+  return payload.verification;
+}
+
+export async function fetchWallet(): Promise<{ balance: number; transactions: WalletTransaction[] }> {
+  return request("/wallet");
+}
+
+export async function depositFunds(input: {
+  cardNumber: string;
+  cardName: string;
+  expMonth: number;
+  expYear: number;
+  cvc: string;
+  amount: number;
+}): Promise<{ balance: number; transaction: WalletTransaction }> {
+  return request("/wallet/deposit", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function fetchProjects(userId?: string): Promise<Project[]> {
+  const q = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+  const r = await request<{ projects: Project[] }>(`/projects${q}`);
+  return r.projects;
+}
+
+/** Create (no id) or update a project. Sends multipart so images can be uploaded. */
+export async function saveProject(form: FormData, id?: string): Promise<Project> {
+  const token = getToken();
+  const response = await fetch(`${API_BASE}/projects${id ? `/${encodeURIComponent(id)}` : ""}`, {
+    method: id ? "PATCH" : "POST",
+    body: form,
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  const payload = (await response.json().catch(() => null)) as { project?: Project; error?: string } | null;
+  if (!response.ok || !payload?.project) {
+    throw new ApiError(payload?.error || "Could not save the project.", response.status);
+  }
+  return payload.project;
+}
+
+export async function removeProject(id: string): Promise<void> {
+  await request(`/projects/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function fetchMeetings(swapId?: string): Promise<{ meetings: Meeting[]; googleMeetConnected: boolean }> {
+  return request(`/meetings${swapId ? `?swapId=${encodeURIComponent(swapId)}` : ""}`);
+}
+
+export async function scheduleMeeting(input: {
+  inviteeId: string;
+  title: string;
+  agenda?: string | null;
+  startsAt: string;
+  durationMinutes: number;
+  swapId?: string | null;
+}): Promise<{ meeting: Meeting }> {
+  return request("/meetings", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function respondToMeeting(id: string, action: "accept" | "decline" | "cancel"): Promise<{ meeting: Meeting }> {
+  return request(`/meetings/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ action }) });
 }
 
 export async function fetchCurrentUser(): Promise<SessionUser> {
@@ -210,7 +342,64 @@ export async function fetchSwaps(): Promise<SwapsPayload> {
   return request("/swaps");
 }
 
-export async function fetchSwap(id: string): Promise<{ swap: Swap }> {
+export type SwapWithHistory = Swap & {
+  history?: SwapOfferEntry[];
+  profile?: MatchProfile | null;
+};
+
+export async function counterSwapProposal(
+  id: string,
+  input: {
+    youGive: string;
+    youGet: string;
+    deadline?: string | null;
+    deposit?: number | null;
+    message?: string | null;
+  }
+): Promise<{ swap: SwapWithHistory }> {
+  return request(`/swaps/${encodeURIComponent(id)}/counter`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function fetchSwapTasks(id: string): Promise<SwapTasksPayload> {
+  const r = await request<{ tasks: SwapTasksPayload }>(`/swaps/${encodeURIComponent(id)}/tasks`);
+  return r.tasks;
+}
+
+export async function regenerateSwapTasks(id: string): Promise<SwapTasksPayload> {
+  const r = await request<{ tasks: SwapTasksPayload }>(`/swaps/${encodeURIComponent(id)}/tasks/regenerate`, {
+    method: "POST",
+  });
+  return r.tasks;
+}
+
+export async function addSwapTask(id: string, title: string, dueDate?: string | null): Promise<SwapTasksPayload> {
+  const r = await request<{ tasks: SwapTasksPayload }>(`/swaps/${encodeURIComponent(id)}/tasks`, {
+    method: "POST",
+    body: JSON.stringify({ title, dueDate: dueDate || null }),
+  });
+  return r.tasks;
+}
+
+export async function setSwapTaskDone(id: string, taskId: number, done: boolean): Promise<SwapTasksPayload> {
+  const r = await request<{ tasks: SwapTasksPayload }>(
+    `/swaps/${encodeURIComponent(id)}/tasks/${taskId}`,
+    { method: "PATCH", body: JSON.stringify({ done }) }
+  );
+  return r.tasks;
+}
+
+export async function deleteSwapTask(id: string, taskId: number): Promise<SwapTasksPayload> {
+  const r = await request<{ tasks: SwapTasksPayload }>(
+    `/swaps/${encodeURIComponent(id)}/tasks/${taskId}`,
+    { method: "DELETE" }
+  );
+  return r.tasks;
+}
+
+export async function fetchSwap(id: string): Promise<{ swap: SwapWithHistory }> {
   return request(`/swaps/${encodeURIComponent(id)}`);
 }
 
@@ -325,7 +514,7 @@ export async function fetchConversationMessages(
 export async function sendConversationMessage(
   id: string,
   text: string
-): Promise<{ message: ChatMessage }> {
+): Promise<{ message: ChatMessage; notice?: string | null }> {
   return request(`/conversations/${encodeURIComponent(id)}/messages`, {
     method: "POST",
     body: JSON.stringify({ text }),
