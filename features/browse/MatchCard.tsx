@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { MatchProfile } from "@/types";
 import { useSwapActions } from "@/features/swaps/SwapActionsProvider";
+import { Avatar } from "@/components/ui/Avatar";
 
 const verifiedBadge = (
   <svg
@@ -36,6 +37,7 @@ export function MatchCard({
   available,
   offer,
   want,
+  idVerified,
 }: MatchProfile) {
   const { goToChat, propose } = useSwapActions();
   const [busy, setBusy] = useState(false);
@@ -46,18 +48,15 @@ export function MatchCard({
     <article className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <div className="flex gap-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={avatar}
-            alt={name}
-            className="h-12 w-12 rounded-full object-cover"
-            width={48}
-            height={48}
-          />
+          <Avatar src={avatar} name={name} size={48} className="rounded-full" />
           <div>
             <div className="flex items-center gap-1">
               <h3 className="font-semibold text-slate-900">{name}</h3>
-              {verifiedBadge}
+              {idVerified ? (
+                <span title="ID verified" aria-label="ID verified">
+                  {verifiedBadge}
+                </span>
+              ) : null}
             </div>
             <p className="text-sm text-slate-500">{location}</p>
             <div className="mt-1 flex items-center gap-1 text-sm text-slate-600">
