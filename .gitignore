@@ -51,3 +51,10 @@ next-env.d.ts
 # feature archives
 features/*.zip
 
+
+# local artifacts
+Claude outputs/
+**/__pycache__/
+*.pyc
+.smtpcheck.mjs
+
