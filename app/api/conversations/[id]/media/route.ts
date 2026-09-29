@@ -3,6 +3,7 @@ import { requireUserId } from "@/lib/auth";
 import { getConversationIfMember, sendMessage } from "@/lib/chat";
 import { saveChatUpload } from "@/lib/chatUpload";
 import { getDb } from "@/lib/db";
+import { applyRules, recordFlags } from "@/lib/moderation";
 
 export const runtime = "nodejs";
 
@@ -34,7 +35,12 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "File is required." }, { status: 400 });
   }
 
-  const caption = String(form.get("caption") || "").trim();
+  const rawCaption = String(form.get("caption") || "").trim();
+  const checkedCaption = applyRules(rawCaption);
+  const caption = checkedCaption.text;
+  if (checkedCaption.findings.length) {
+    recordFlags(db, { userId: auth.userId, conversationId: id, originalText: rawCaption }, checkedCaption.findings);
+  }
   const saved = await saveChatUpload(file);
   if ("error" in saved) {
     return NextResponse.json({ error: saved.error }, { status: saved.status });

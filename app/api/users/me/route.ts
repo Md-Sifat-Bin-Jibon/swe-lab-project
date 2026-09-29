@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUserId } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import type { UserRow } from "@/lib/format";
-import { loadSessionUser, readSkills, updateOfferWantSkills } from "@/lib/users";
+import { loadSessionUser, updateOfferWantSkills } from "@/lib/users";
 
 export const runtime = "nodejs";
 
@@ -73,11 +73,13 @@ export async function PATCH(request: Request) {
     auth.userId
   );
 
-  if (skillsOffer || skillsWant) {
-    const currentSkills = readSkills(db, auth.userId);
-    const offer = skillsOffer ?? currentSkills.skillsOffer;
-    const want = skillsWant ?? currentSkills.skillsWant;
-    updateOfferWantSkills(db, auth.userId, offer, want);
+  if (Array.isArray(skillsOffer) || Array.isArray(skillsWant)) {
+    updateOfferWantSkills(
+      db,
+      auth.userId,
+      Array.isArray(skillsOffer) ? skillsOffer : undefined,
+      Array.isArray(skillsWant) ? skillsWant : undefined
+    );
   }
 
   const user = loadSessionUser(db, auth.userId);

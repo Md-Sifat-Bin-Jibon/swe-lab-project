@@ -3,8 +3,7 @@ import { requireUserId } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import {
   formatMatchProfile,
-  getUserSkills,
-  type SwapRow,
+  getUserSkillsByKind,
   type UserRow,
 } from "@/lib/format";
 import { rankProfiles } from "@/lib/matches";
@@ -14,7 +13,7 @@ import {
 } from "@/lib/swaps";
 import { countUnreadMessages } from "@/lib/chat";
 import { loadSessionUser } from "@/lib/users";
-import type { Activity } from "@/types";
+import { buildActivityFeed } from "@/lib/activity";
 
 export const runtime = "nodejs";
 
@@ -30,7 +29,11 @@ export async function GET(request: Request) {
     .all(auth.userId) as UserRow[];
 
   const allProfiles = rows.map((row) =>
-    formatMatchProfile(row, getUserSkills(db, row.id))
+    formatMatchProfile(
+      row,
+      getUserSkillsByKind(db, row.id).offer,
+      getUserSkillsByKind(db, row.id).want
+    )
   );
   const matches = rankProfiles(allProfiles, user);
 
@@ -40,40 +43,7 @@ export async function GET(request: Request) {
 
   const newMessages = countUnreadMessages(db, auth.userId);
 
-  const completedSwaps = db
-    .prepare(
-      `SELECT * FROM swaps
-       WHERE type = 'completed' AND (owner_id = ? OR partner_id = ?)
-       ORDER BY rowid DESC`
-    )
-    .all(auth.userId, auth.userId) as SwapRow[];
-
-  const incomingProposalRows = db
-    .prepare(
-      `SELECT * FROM swaps
-       WHERE type = 'proposal' AND partner_id = ?
-       ORDER BY rowid DESC`
-    )
-    .all(auth.userId) as SwapRow[];
-
-  const activities: Activity[] = [
-    ...incomingProposalRows.map((proposal, index) => {
-      const proposer = db
-        .prepare("SELECT full_name FROM users WHERE id = ?")
-        .get(proposal.owner_id) as { full_name: string | null } | undefined;
-      const name = proposer?.full_name || "Someone";
-      return {
-        text: `<strong>${name}</strong> sent you a new swap proposal.`,
-        time: proposal.received_at,
-        order: index,
-      };
-    }),
-    ...completedSwaps.map((swap, index) => ({
-      text: `Swap <strong>${swap.exchange ?? "skill exchange"}</strong> was completed.`,
-      time: swap.completed_at,
-      order: index + incomingProposalRows.length,
-    })),
-  ].slice(0, 5);
+  const activities = buildActivityFeed(db, auth.userId, 8);
 
   const unreadCount = newMessages + incomingProposals;
 

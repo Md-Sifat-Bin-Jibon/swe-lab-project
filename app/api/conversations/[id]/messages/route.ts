@@ -8,6 +8,7 @@ import {
   sendMessage,
 } from "@/lib/chat";
 import { getDb } from "@/lib/db";
+import { describeFindings, moderateText, recordFlags } from "@/lib/moderation";
 
 export const runtime = "nodejs";
 
@@ -75,8 +76,26 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
+  // Strip contact details / off-platform links before the message is stored.
+  let cleanText = text;
+  let notice: string | null = null;
+  if (text.trim()) {
+    const checked = await moderateText(text);
+    if (checked.findings.length) {
+      if (checked.empty && messageType === "text") {
+        recordFlags(db, { userId: auth.userId, conversationId: id, originalText: text }, checked.findings);
+        return NextResponse.json(
+          { error: describeFindings(checked.findings), blocked: true, findings: checked.findings.map((f) => f.kind) },
+          { status: 422 }
+        );
+      }
+      cleanText = checked.text;
+      notice = describeFindings(checked.findings);
+    }
+  }
+
   const message = sendMessage(db, id, auth.userId, {
-    text,
+    text: cleanText,
     messageType: messageType === "image" || messageType === "voice"
       ? messageType
       : "text",
@@ -89,5 +108,14 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  return NextResponse.json({ message }, { status: 201 });
+  if (notice) {
+    const checked = await moderateText(text, { useAi: false });
+    recordFlags(
+      db,
+      { userId: auth.userId, conversationId: id, messageId: message.id ?? null, originalText: text },
+      checked.findings.length ? checked.findings : [{ kind: "other", excerpt: text.slice(0, 120), source: "ai" }]
+    );
+  }
+
+  return NextResponse.json({ message, notice }, { status: 201 });
 }
