@@ -28,6 +28,11 @@ export type UserRow = {
   is_browseable: number;
   email_verified: number;
   onboarding_complete: number;
+  status?: string | null;
+  suspended_reason?: string | null;
+  id_verification_status?: string | null;
+  id_verified_at?: string | null;
+  created_at?: string | null;
 };
 
 export type SwapRow = {
@@ -51,6 +56,10 @@ export type SwapRow = {
   rating: string | null;
   description: string | null;
   deposit: number | null;
+  awaiting_user_id?: string | null;
+  counter_count?: number | null;
+  last_action_by?: string | null;
+  deposit_held?: number | null;
 };
 
 export type ConversationRow = {
@@ -72,12 +81,26 @@ export function firstNameFrom(fullName: string | null | undefined): string {
   return trimmed.split(/\s+/)[0];
 }
 
+/** Skills a user offers (what other members can learn from them). */
 export function getUserSkills(db: DatabaseSync, userId: string): string[] {
-  return (
-    db
-      .prepare("SELECT skill FROM user_skills WHERE user_id = ? ORDER BY id")
-      .all(userId) as { skill: string }[]
-  ).map((row) => row.skill);
+  return getUserSkillsByKind(db, userId).offer;
+}
+
+/** Offered and wanted skills, each in the order the user added them. */
+export function getUserSkillsByKind(
+  db: DatabaseSync,
+  userId: string
+): { offer: string[]; want: string[] } {
+  const rows = db
+    .prepare(
+      "SELECT skill, kind FROM user_skills WHERE user_id = ? ORDER BY id"
+    )
+    .all(userId) as { skill: string; kind: string }[];
+
+  return {
+    offer: rows.filter((r) => r.kind !== "want").map((r) => r.skill),
+    want: rows.filter((r) => r.kind === "want").map((r) => r.skill),
+  };
 }
 
 /** Session user shape used by the dashboard header and stats. */
@@ -102,19 +125,22 @@ export function formatSessionUser(
       `https://i.pravatar.cc/80?u=${encodeURIComponent(firstName.toLowerCase())}`,
     skillsOffer,
     skillsWant,
-    balance: row.balance ?? 0,
+    balance: Number(row.balance ?? 0),
     onboardingComplete: Boolean(row.onboarding_complete),
+    idVerified: row.id_verification_status === "verified",
+    idVerifiedAt: row.id_verified_at ?? null,
   };
 }
 
 /** Browse / match profile card shape. */
 export function formatMatchProfile(
   row: UserRow,
-  skills: string[] = []
+  skills: string[] = [],
+  wants: string[] = []
 ): MatchProfile {
   return {
     id: row.id,
-    name: row.full_name || "",
+    name: row.full_name?.trim() || "SwapSpot Member",
     location: row.location || "",
     rating: row.rating || "4.5 (0)",
     avatar:
@@ -127,6 +153,9 @@ export function formatMatchProfile(
     memberSince: row.member_since || "",
     completedSwaps: row.completed_swaps ?? 0,
     skills,
+    wants: wants.length ? wants : row.want_skill ? [row.want_skill] : [],
+    verified: Boolean(row.email_verified),
+    idVerified: row.id_verification_status === "verified",
   };
 }
 
@@ -158,7 +187,10 @@ export function formatSwapRow(row: SwapRow, viewerId: string): Swap {
   }
 
   if (row.type === "proposal") {
-    const incoming = !isProposer;
+    // Whoever made the latest offer waits; the other person responds.
+    const awaitingId = row.awaiting_user_id ?? row.partner_id;
+    const incoming = awaitingId === viewerId;
+    const counterCount = Number(row.counter_count ?? 0);
     const proposerOffer = row.exchange;
     const wantFromRecipient = row.offering;
     return {
@@ -168,8 +200,12 @@ export function formatSwapRow(row: SwapRow, viewerId: string): Swap {
       partnerId: isProposer ? row.partner_id : row.owner_id,
       partnerName: row.partner_name,
       statusLabel: incoming
-        ? "Awaiting your response"
-        : "Awaiting their response",
+        ? counterCount
+          ? "Counter-offer · your turn"
+          : "Awaiting your response"
+        : counterCount
+          ? "Counter sent · awaiting their response"
+          : "Awaiting their response",
       description: row.description,
       deposit: Number(row.deposit ?? 0),
       viewerRole,
@@ -178,6 +214,11 @@ export function formatSwapRow(row: SwapRow, viewerId: string): Swap {
       receivedAt: row.received_at,
       deadline: row.deadline,
       incoming,
+      youGive: isProposer ? row.exchange : row.offering,
+      youGet: isProposer ? row.offering : row.exchange,
+      counterCount,
+      lastActionByYou: (row.last_action_by ?? row.owner_id) === viewerId,
+      depositHeld: Number(row.deposit_held ?? row.deposit ?? 0),
     } satisfies ProposalSwap;
   }
 

@@ -227,7 +227,11 @@ export const openApiSpec = {
                   properties: {
                     message: { type: "string" },
                     email: { type: "string" },
-                    demoOtp: { type: "string", example: "123456" },
+                    emailSent: { type: "boolean" },
+                    devOtp: {
+                      type: "string",
+                      description: "Only returned in development when SMTP is not configured",
+                    },
                   },
                 },
               },
@@ -252,11 +256,120 @@ export const openApiSpec = {
         },
       },
     },
+    "/api/auth/resend-otp": {
+      post: {
+        tags: ["Auth"],
+        summary: "Resend email OTP",
+        description: "Sends a new code by email. Limited to one request per 60 seconds.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email"],
+                properties: { email: { type: "string", format: "email" } },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Code sent (or no action needed)" },
+          "429": {
+            description: "Cooldown active",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+              },
+            },
+          },
+          "502": {
+            description: "SMTP send failed",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/auth/forgot-password": {
+      post: {
+        tags: ["Auth"],
+        summary: "Request password reset code",
+        description:
+          "Emails a 6-digit reset code (valid 10 minutes). Always returns the same message whether or not the account exists.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email"],
+                properties: { email: { type: "string", format: "email" } },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Reset code sent (if the account exists)" },
+          "400": {
+            description: "Invalid email",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+          "429": {
+            description: "Cooldown active",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+          "502": {
+            description: "SMTP send failed",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+        },
+      },
+    },
+    "/api/auth/reset-password": {
+      post: {
+        tags: ["Auth"],
+        summary: "Reset password with code",
+        description:
+          "Without `password`, only validates the code. With `password`, consumes the code and sets the new password.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email", "code"],
+                properties: {
+                  email: { type: "string", format: "email" },
+                  code: { type: "string", example: "123456" },
+                  password: { type: "string", minLength: 8 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Code valid / password reset" },
+          "400": {
+            description: "Invalid or expired code / weak password",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+          "429": {
+            description: "Too many attempts",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+          },
+        },
+      },
+    },
     "/api/auth/verify-otp": {
       post: {
         tags: ["Auth"],
         summary: "Verify email OTP",
-        description: "Demo OTP is always `123456`. Sets auth cookie and returns JWT.",
+        description:
+          "Verifies the 6-digit code emailed via SMTP (valid 10 minutes, max 5 attempts). Sets auth cookie and returns JWT.",
         requestBody: {
           required: true,
           content: {

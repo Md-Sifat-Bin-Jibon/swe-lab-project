@@ -158,15 +158,19 @@ function upsertUser(
 function replaceSkills(
   db: DatabaseSync,
   userId: string,
-  skills: string[]
+  skills: string[],
+  wants: string[] = []
 ): void {
   db.prepare("DELETE FROM user_skills WHERE user_id = ?").run(userId);
   const insert = db.prepare(
-    "INSERT INTO user_skills (user_id, skill) VALUES (?, ?)"
+    "INSERT INTO user_skills (user_id, skill, kind) VALUES (?, ?, ?)"
   );
 
   for (const skill of skills) {
-    insert.run(userId, skill);
+    insert.run(userId, skill, "offer");
+  }
+  for (const skill of wants) {
+    insert.run(userId, skill, "want");
   }
 }
 
@@ -467,11 +471,16 @@ export function seedDatabase(db: DatabaseSync): void {
 
   for (const profile of browseProfiles) {
     upsertUser(db, profile, passwordHash, { is_browseable: true });
-    replaceSkills(db, profile.id, profile.skills);
+    replaceSkills(
+      db,
+      profile.id,
+      profile.skills,
+      profile.want_skill ? [profile.want_skill] : []
+    );
   }
 
   upsertUser(db, demoUser, passwordHash, { is_browseable: true });
-  replaceSkills(db, demoUser.id, demoUser.skillsOffer);
+  replaceSkills(db, demoUser.id, demoUser.skillsOffer, demoUser.skillsWant);
 
   seedSwaps(db, demoUser.id);
   seedConversations(db, demoUser.id);

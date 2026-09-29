@@ -10,6 +10,8 @@ const TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 type TokenPayload = {
   sub: string;
+  /** Admin tokens carry typ: "admin" and are never valid for member routes. */
+  typ?: string;
 };
 
 export function signToken(userId: string): string {
@@ -19,6 +21,7 @@ export function signToken(userId: string): string {
 export function verifyToken(token: string): string | null {
   try {
     const payload = jwt.verify(token, JWT_SECRET) as TokenPayload;
+    if (payload.typ === "admin") return null;
     return payload.sub ?? null;
   } catch {
     return null;
