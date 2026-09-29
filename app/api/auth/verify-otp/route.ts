@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { setAuthCookie, signToken } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import type { UserRow } from "@/lib/format";
+import { checkOtp } from "@/lib/otp";
 import { loadSessionUser } from "@/lib/users";
 
 export const runtime = "nodejs";
@@ -29,23 +30,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Account not found." }, { status: 404 });
   }
 
-  const otp = db.prepare("SELECT * FROM otp_codes WHERE email = ?").get(email) as
-    | { email: string; code: string; expires_at: string }
-    | undefined;
-
-  if (!otp || otp.code !== code) {
-    return NextResponse.json({ error: "Invalid OTP code." }, { status: 400 });
-  }
-
-  if (new Date(otp.expires_at).getTime() < Date.now()) {
+  const result = checkOtp(db, email, code);
+  if (!result.ok) {
+    const messages = {
+      invalid: "Invalid OTP code.",
+      expired: "OTP code has expired. Please request a new one.",
+      too_many_attempts: "Too many incorrect attempts. Please request a new code.",
+    } as const;
     return NextResponse.json(
-      { error: "OTP code has expired." },
-      { status: 400 }
+      { error: messages[result.reason], reason: result.reason },
+      { status: result.reason === "too_many_attempts" ? 429 : 400 }
     );
   }
 
   db.prepare("UPDATE users SET email_verified = 1 WHERE id = ?").run(user.id);
-  db.prepare("DELETE FROM otp_codes WHERE email = ?").run(email);
 
   const token = signToken(user.id);
   const sessionUser = loadSessionUser(db, user.id);

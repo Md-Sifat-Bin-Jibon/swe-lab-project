@@ -37,6 +37,17 @@ export async function POST(request: Request) {
     );
   }
 
+  if (user.status === "suspended") {
+    return NextResponse.json(
+      {
+        error: user.suspended_reason
+          ? `This account is suspended: ${user.suspended_reason}`
+          : "This account is suspended. Contact support for help.",
+      },
+      { status: 403 }
+    );
+  }
+
   if (user.email.toLowerCase().endsWith("@profile.swapspot")) {
     return NextResponse.json(
       { error: "This account cannot be used to sign in." },

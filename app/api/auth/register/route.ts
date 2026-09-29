@@ -1,21 +1,9 @@
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { issueOtp } from "@/lib/otp";
 
 export const runtime = "nodejs";
-
-function createOtp(email: string): string {
-  const db = getDb();
-  const code = "123456";
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
-  db.prepare(
-    `INSERT INTO otp_codes (email, code, expires_at) VALUES (?, ?, ?)
-     ON CONFLICT(email) DO UPDATE SET code = excluded.code, expires_at = excluded.expires_at`
-  ).run(email.toLowerCase(), code, expiresAt);
-
-  return code;
-}
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -59,13 +47,17 @@ export async function POST(request: Request) {
      VALUES (?, ?, ?, ?, 0, 0)`
   ).run(id, email, passwordHash, username || null);
 
-  createOtp(email);
+  const otp = await issueOtp(db, email);
+  const emailSent = otp.ok;
 
   return NextResponse.json(
     {
-      message: "Account created. Verify your email with the OTP sent to you.",
+      message: emailSent
+        ? "Account created. We've emailed you a 6-digit verification code."
+        : "Account created, but we couldn't send the verification email. Please use Resend Code.",
       email,
-      demoOtp: "123456",
+      emailSent,
+      ...(otp.ok && otp.devOtp ? { devOtp: otp.devOtp } : {}),
     },
     { status: 201 }
   );
