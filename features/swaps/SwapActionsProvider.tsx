@@ -13,20 +13,26 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/useToast";
 import {
   acceptProposal,
+  ApiError,
+  counterSwapProposal,
   declineProposal,
+  fetchCurrentUser,
+  getCachedUser,
   fileSwapDispute,
   markSwapCompleted,
   respondToDispute,
   submitReview,
 } from "@/services/api";
-import type { MatchProfile, Swap } from "@/types";
+import type { MatchProfile, ProposalSwap, Swap } from "@/types";
+import { CounterOfferModal, type CounterTarget } from "./CounterOfferModal";
 
 type ProposeProfile = Pick<MatchProfile, "id" | "name" | "offer" | "want">;
 
 interface SwapActionsContextValue {
   goToChat: (partnerId?: string | null) => void;
   accept: (swapId: string) => Promise<Swap | null>;
-  decline: (swapId: string) => Promise<boolean>;
+  decline: (swapId: string, kind?: "decline" | "withdraw") => Promise<boolean>;
+  openCounter: (swap: ProposalSwap & { profile?: MatchProfile | null }) => void;
   complete: (swapId: string) => Promise<boolean>;
   propose: (profile: ProposeProfile) => Promise<boolean>;
   openDispute: (swapId: string) => void;
@@ -60,6 +66,10 @@ export function SwapActionsProvider({ children }: { children: ReactNode }) {
   const [disputeSwapId, setDisputeSwapId] = useState<string | null>(null);
   const [disputeText, setDisputeText] = useState("");
   const [disputeBusy, setDisputeBusy] = useState(false);
+
+  const [counterTarget, setCounterTarget] = useState<CounterTarget | null>(null);
+  const [counterBusy, setCounterBusy] = useState(false);
+  const [counterError, setCounterError] = useState<string | null>(null);
 
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewSwapId, setReviewSwapId] = useState<string | null>(null);
@@ -98,8 +108,13 @@ export function SwapActionsProvider({ children }: { children: ReactNode }) {
           `Proposal accepted — swap with ${swap.partnerName} is now active.`
         );
         return swap;
-      } catch {
-        showToast("Could not accept this proposal.");
+      } catch (error) {
+        showToast(
+          error instanceof ApiError && error.status !== 404
+            ? error.message
+            : "Could not accept — the terms may have changed. Refresh and try again."
+        );
+        await runMutate();
         return null;
       }
     },
@@ -107,12 +122,12 @@ export function SwapActionsProvider({ children }: { children: ReactNode }) {
   );
 
   const decline = useCallback(
-    async (swapId: string) => {
+    async (swapId: string, kind: "decline" | "withdraw" = "decline") => {
       try {
         await delay();
         await declineProposal(swapId);
         await runMutate();
-        showToast("Proposal declined.");
+        showToast(kind === "withdraw" ? "Proposal withdrawn." : "Proposal declined.");
         return true;
       } catch {
         showToast("Could not decline this proposal.");
@@ -162,6 +177,53 @@ export function SwapActionsProvider({ children }: { children: ReactNode }) {
     setDisputeOpen(true);
   }, []);
 
+  const openCounter = useCallback(
+    (swap: ProposalSwap & { profile?: MatchProfile | null }) => {
+      const me = getCachedUser();
+      setCounterError(null);
+      setCounterTarget({
+        id: swap.id,
+        partnerName: swap.partnerName,
+        youGive: swap.youGive,
+        youGet: swap.youGet,
+        deadline: swap.deadline,
+        deposit: swap.deposit ?? 0,
+        depositHeld: swap.depositHeld ?? swap.deposit ?? 0,
+        viewerRole: swap.viewerRole,
+        myBalance: me?.balance ?? null,
+        mySkills: me?.skillsOffer ?? [],
+        theirSkills: swap.profile?.skills ?? [],
+      });
+    },
+    []
+  );
+
+  const submitCounter = useCallback(
+    async (input: {
+      youGive: string;
+      youGet: string;
+      deadline: string | null;
+      deposit: number;
+      message: string | null;
+    }) => {
+      if (!counterTarget) return;
+      setCounterBusy(true);
+      setCounterError(null);
+      try {
+        await counterSwapProposal(counterTarget.id, input);
+        setCounterTarget(null);
+        fetchCurrentUser().catch(() => {}); // balance may have changed
+        await runMutate();
+        showToast(`Counter-offer sent to ${counterTarget.partnerName || "your partner"}.`);
+      } catch (error) {
+        setCounterError(error instanceof Error ? error.message : "Could not send counter-offer.");
+      } finally {
+        setCounterBusy(false);
+      }
+    },
+    [counterTarget, runMutate, showToast]
+  );
+
   const openReview = useCallback((swapId: string) => {
     setReviewSwapId(swapId);
     setReviewRating(0);
@@ -175,12 +237,14 @@ export function SwapActionsProvider({ children }: { children: ReactNode }) {
       decline,
       complete,
       propose,
+      openCounter,
       openDispute,
       openFileDispute,
       openReview,
       setOnMutate,
     }),
     [
+      openCounter,
       goToChat,
       accept,
       decline,
@@ -285,6 +349,16 @@ export function SwapActionsProvider({ children }: { children: ReactNode }) {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {counterTarget ? (
+        <CounterOfferModal
+          target={counterTarget}
+          busy={counterBusy}
+          error={counterError}
+          onClose={() => setCounterTarget(null)}
+          onSubmit={(input) => void submitCounter(input)}
+        />
       ) : null}
 
       {reviewOpen ? (

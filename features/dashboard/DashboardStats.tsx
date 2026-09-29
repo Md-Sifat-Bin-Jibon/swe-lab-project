@@ -110,7 +110,7 @@ const statConfig: StatConfig[] = [
     icon: <BalanceIcon />,
     label: "Balance",
     bgClass: "bg-violet-50",
-    action: "balance",
+    href: "/wallet",
   },
 ];
 

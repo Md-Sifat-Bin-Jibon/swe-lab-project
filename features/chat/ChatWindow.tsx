@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ChatMessage, Conversation } from "@/types";
 import { ChatMessages } from "@/features/chat/ChatMessages";
 import { ChatInput } from "@/features/chat/ChatInput";
+import { Avatar } from "@/components/ui/Avatar";
 
 export interface ChatWindowProps {
   conversation?: Conversation | null;
@@ -46,14 +47,7 @@ export function ChatWindow({
             {conversation.initials}
           </div>
         ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={avatar}
-            alt={name}
-            className="h-10 w-10 rounded-full object-cover"
-            width={40}
-            height={40}
-          />
+          <Avatar src={avatar} name={name} size={40} className="rounded-full" />
         )}
         <div className="min-w-0 flex-1">
           <h2 className="truncate font-semibold text-slate-900">{name}</h2>

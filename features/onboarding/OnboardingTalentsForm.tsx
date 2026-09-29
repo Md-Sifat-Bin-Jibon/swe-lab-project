@@ -1,20 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { SkillTags } from "@/components/ui/SkillTags";
 import { useToast } from "@/hooks/useToast";
-import { updateProfile } from "@/services/api";
+import { fetchCurrentUser, updateProfile } from "@/services/api";
 import { OnboardingProgress } from "./OnboardingProgress";
 
 export function OnboardingTalentsForm() {
   const router = useRouter();
   const { showToast } = useToast();
-  const [skills, setSkills] = useState<string[]>(["UX/UI Design"]);
+  const [skills, setSkills] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
+  // Pre-fill with what's already saved (e.g. when the user navigates back).
+  useEffect(() => {
+    let cancelled = false;
+    fetchCurrentUser()
+      .then((user) => {
+        if (!cancelled && user.skillsOffer.length) setSkills(user.skillsOffer);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function handleNext() {
+    if (!skills.length) {
+      showToast("Add at least one skill to continue.");
+      return;
+    }
+
     setSubmitting(true);
 
     try {

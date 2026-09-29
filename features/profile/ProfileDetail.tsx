@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import type { MatchProfile } from "@/types";
 import { useSwapActions } from "@/features/swaps/SwapActionsProvider";
+import { Avatar } from "@/components/ui/Avatar";
+import { ProjectsSection } from "@/features/projects/ProjectsSection";
 
 const verifiedBadge = (
   <svg
@@ -61,13 +63,11 @@ export function ProfileDetail({ profile }: { profile: MatchProfile }) {
       <article className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
         <div className="bg-gradient-to-r from-swapspot-blue/10 via-swapspot-blue/5 to-transparent px-6 py-8 sm:px-8">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-end">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Avatar
               src={profile.avatar}
-              alt={profile.name}
-              className="h-28 w-28 rounded-2xl object-cover shadow-md ring-4 ring-white"
-              width={112}
-              height={112}
+              name={profile.name}
+              size={112}
+              className="rounded-2xl shadow-md ring-4 ring-white"
             />
             <div className="min-w-0 flex-1 pb-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -192,6 +192,8 @@ export function ProfileDetail({ profile }: { profile: MatchProfile }) {
           </div>
         </div>
       </section>
+
+      <ProjectsSection userId={profile.id} ownerName={profile.name.split(" ")[0] || profile.name} />
     </div>
   );
 }

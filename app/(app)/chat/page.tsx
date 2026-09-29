@@ -6,6 +6,7 @@ import { PageLoading } from "@/components/shared/PageLoading";
 import { AppHeader } from "@/features/shared/AppHeader";
 import { ChatInbox } from "@/features/chat/ChatInbox";
 import {
+  ApiError,
   fetchConversationMessages,
   fetchConversations,
   fetchDashboard,
@@ -183,8 +184,10 @@ function ChatPageContent() {
       setSending(true);
       try {
         void setConversationTyping(activeId, false).catch(() => undefined);
-        const { message } = await sendConversationMessage(activeId, text);
+        const { message, notice } = await sendConversationMessage(activeId, text);
         setMessages((prev) => [...prev, message]);
+        // The server strips contact details / outside links before storing.
+        if (notice) setMessagesError(notice);
         setConversations((prev) =>
           prev.map((c) =>
             c.id === activeId
@@ -198,8 +201,12 @@ function ChatPageContent() {
               : c
           )
         );
-      } catch {
-        setMessagesError("Could not send message. Try again.");
+      } catch (error) {
+        setMessagesError(
+          error instanceof ApiError && error.status === 422
+            ? error.message
+            : "Could not send message. Try again."
+        );
       } finally {
         setSending(false);
       }

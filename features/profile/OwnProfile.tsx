@@ -7,6 +7,9 @@ import { BioField } from "@/components/ui/BioField";
 import { useToast } from "@/hooks/useToast";
 import { updateProfile } from "@/services/api";
 import type { SessionUser } from "@/types";
+import { ProfileInsights } from "./insights/ProfileInsights";
+import { ProjectsSection } from "@/features/projects/ProjectsSection";
+import { Avatar } from "@/components/ui/Avatar";
 
 export function OwnProfile({
   user,
@@ -25,6 +28,7 @@ export function OwnProfile({
   const [avatar, setAvatar] = useState(user.avatar);
   const [skillsOffer, setSkillsOffer] = useState(user.skillsOffer.join(", "));
   const [skillsWant, setSkillsWant] = useState(user.skillsWant.join(", "));
+  const [statsVersion, setStatsVersion] = useState(0);
 
   function syncFrom(next: SessionUser) {
     setFullName(next.fullName);
@@ -60,6 +64,7 @@ export function OwnProfile({
       onUpdated(updated);
       syncFrom(updated);
       setEditing(false);
+      setStatsVersion((v) => v + 1);
       showToast("Profile updated.");
     } catch {
       showToast("Could not update your profile.");
@@ -115,36 +120,74 @@ export function OwnProfile({
       <article className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
         <div className="bg-gradient-to-r from-swapspot-blue/10 via-swapspot-blue/5 to-transparent px-6 py-8 sm:px-8">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-end">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Avatar
               src={user.avatar}
-              alt={user.fullName}
-              className="h-28 w-28 rounded-2xl object-cover shadow-md ring-4 ring-white"
-              width={112}
-              height={112}
+              name={user.fullName}
+              size={112}
+              className="rounded-2xl shadow-md ring-4 ring-white"
             />
             <div className="min-w-0 flex-1 pb-1">
-              <h2 className="text-3xl font-bold text-slate-900">
+              <h2 className="flex flex-wrap items-center gap-2 text-3xl font-bold text-slate-900">
                 {user.fullName}
+                {user.idVerified ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                      <path d="m5 12 5 5L20 7" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    ID verified
+                  </span>
+                ) : null}
               </h2>
               <p className="mt-1 text-slate-500">{user.email}</p>
               <p className="mt-1 text-sm text-slate-500">
                 {user.location || "Location not set"}
               </p>
             </div>
-            <Link
-              href="/browse"
-              className="rounded-lg border-2 border-swapspot-blue px-5 py-2.5 text-sm font-semibold text-swapspot-blue transition hover:bg-swapspot-blue/5"
-            >
-              Browse matches
-            </Link>
+            <div className="flex flex-col gap-2 sm:items-stretch">
+              {user.idVerified ? (
+                <Link
+                  href="/verify"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-50 px-5 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z" strokeLinejoin="round" />
+                    <path d="m9 12 2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Verified
+                </Link>
+              ) : (
+                <Link
+                  href="/verify"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-swapspot-blue px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#3f52c4]"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z" strokeLinejoin="round" />
+                  </svg>
+                  Verify
+                </Link>
+              )}
+              <Link
+                href="/browse"
+                className="rounded-lg border-2 border-swapspot-blue px-5 py-2.5 text-center text-sm font-semibold text-swapspot-blue transition hover:bg-swapspot-blue/5"
+              >
+                Browse matches
+              </Link>
+            </div>
           </div>
         </div>
 
         <div className="grid gap-6 p-6 sm:grid-cols-3 sm:p-8">
           <div className="rounded-xl bg-slate-50 p-4 text-center">
-            <p className="text-2xl font-bold text-slate-900">{user.balance}</p>
+            <p className="text-2xl font-bold text-slate-900">
+              {user.balance.toLocaleString("en-US", { style: "currency", currency: "USD" })}
+            </p>
             <p className="mt-1 text-sm text-slate-500">Balance</p>
+            <Link
+              href="/wallet"
+              className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-swapspot-blue hover:underline"
+            >
+              + Add funds
+            </Link>
           </div>
           <div className="rounded-xl bg-slate-50 p-4 text-center">
             <p className="text-2xl font-bold text-slate-900">
@@ -288,6 +331,10 @@ export function OwnProfile({
           </section>
         </div>
       )}
+
+      <ProjectsSection ownerName={user.firstName} editable mySkills={user.skillsOffer} />
+
+      <ProfileInsights refreshKey={statsVersion} />
     </div>
   );
 }

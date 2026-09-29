@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { SwapCountdown } from "@/features/swaps/useSwapCountdown";
 import { useSwapActions } from "@/features/swaps/SwapActionsProvider";
-import type { Swap } from "@/types";
+import { SwapPlan } from "@/features/swaps/SwapPlan";
+import { MeetingsPanel } from "@/features/meetings/MeetingsPanel";
+import type { MatchProfile, Swap, SwapOfferEntry } from "@/types";
+
+type DetailSwap = Swap & { history?: SwapOfferEntry[]; profile?: MatchProfile | null };
 
 function formatDeposit(amount: number): string {
   return `$${amount.toFixed(2)} USD`;
@@ -72,7 +76,7 @@ function swapTitle(swap: Swap): string {
     return `${a} for ${b}`;
   }
   if (swap.type === "proposal") {
-    return swap.incoming
+    return swap.viewerRole === "recipient"
       ? `Proposal from ${swap.partnerName}`
       : `Proposal to ${swap.partnerName}`;
   }
@@ -144,9 +148,105 @@ function OngoingActions({ swap }: { swap: Swap }) {
   );
 }
 
-function ProposalActions({ swap }: { swap: Swap }) {
+/** "2026-12-31" → "Dec 31, 2026"; other formats are shown as-is. */
+function formatDay(value: string | null | undefined): string {
+  if (!value) return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const d = new Date(`${value}T00:00:00`);
+  return Number.isNaN(d.getTime())
+    ? value
+    : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatWhen(value: string) {
+  const d = new Date(value.includes("T") ? value : value.replace(" ", "T") + "Z");
+  return Number.isNaN(d.getTime())
+    ? value
+    : d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function NegotiationHistory({ history }: { history: SwapOfferEntry[] }) {
+  return (
+    <section className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+      <h2 className="text-lg font-bold text-slate-900">Negotiation history</h2>
+      <ol className="mt-5 space-y-0">
+        {history.map((entry, i) => {
+          const prev = history[i - 1];
+          const changed = (a: string | null, b: string | null | undefined) =>
+            Boolean(prev) && (a ?? "").toLowerCase() !== (b ?? "").toLowerCase();
+          const latest = i === history.length - 1;
+          return (
+            <li key={entry.id} className="relative flex gap-4 pb-6 last:pb-0">
+              {!latest ? (
+                <span className="absolute left-[11px] top-7 h-[calc(100%-1.25rem)] w-0.5 bg-slate-100" aria-hidden="true" />
+              ) : null}
+              <span
+                className={`relative mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                  latest ? "bg-swapspot-blue text-white" : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {i + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-slate-800">
+                  <span className="font-semibold">{entry.authorName}</span>{" "}
+                  {entry.kind === "proposal" ? "proposed the swap" : "sent a counter-offer"}
+                  {latest ? (
+                    <span className="ml-2 rounded bg-swapspot-blue/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-swapspot-blue">
+                      Current
+                    </span>
+                  ) : null}
+                </p>
+                <p className="text-xs text-slate-400">{formatWhen(entry.createdAt)}</p>
+                <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                  <span className="text-slate-500">
+                    You teach:{" "}
+                    <span className={`font-medium ${changed(entry.youGive, prev?.youGive) ? "text-amber-700" : "text-slate-800"}`}>
+                      {entry.youGive || "—"}
+                    </span>
+                  </span>
+                  <span className="text-slate-500">
+                    You learn:{" "}
+                    <span className={`font-medium ${changed(entry.youGet, prev?.youGet) ? "text-amber-700" : "text-slate-800"}`}>
+                      {entry.youGet || "—"}
+                    </span>
+                  </span>
+                  {entry.deposit !== null ? (
+                    <span className="text-slate-500">
+                      Escrow:{" "}
+                      <span
+                        className={`font-medium ${
+                          prev && prev.deposit !== null && prev.deposit !== entry.deposit ? "text-amber-700" : "text-slate-800"
+                        }`}
+                      >
+                        ${entry.deposit.toFixed(2)}
+                      </span>
+                    </span>
+                  ) : null}
+                  {entry.deadline ? (
+                    <span className="text-slate-500">
+                      Ends:{" "}
+                      <span className={`font-medium ${changed(entry.deadline, prev?.deadline) ? "text-amber-700" : "text-slate-800"}`}>
+                        {formatDay(entry.deadline)}
+                      </span>
+                    </span>
+                  ) : null}
+                </div>
+                {entry.message ? (
+                  <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-sm italic text-slate-600">&ldquo;{entry.message}&rdquo;</p>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+function ProposalActions({ swap }: { swap: DetailSwap }) {
   const router = useRouter();
-  const { accept, decline } = useSwapActions();
+  const { accept, decline, openCounter } = useSwapActions();
   const [busy, setBusy] = useState(false);
 
   if (swap.type !== "proposal") return null;
@@ -158,7 +258,7 @@ function ProposalActions({ swap }: { swap: Swap }) {
         disabled={busy}
         onClick={async () => {
           setBusy(true);
-          const ok = await decline(swap.id);
+          const ok = await decline(swap.id, "withdraw");
           setBusy(false);
           if (ok) {
             window.setTimeout(() => {
@@ -168,7 +268,7 @@ function ProposalActions({ swap }: { swap: Swap }) {
         }}
         className="rounded-lg border-2 border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-70"
       >
-        {busy ? "Processing…" : "Cancel proposal"}
+        {busy ? "Processing…" : "Withdraw proposal"}
       </button>
     );
   }
@@ -195,9 +295,17 @@ function ProposalActions({ swap }: { swap: Swap }) {
       <button
         type="button"
         disabled={busy}
+        onClick={() => openCounter({ ...swap, profile: swap.profile })}
+        className="rounded-lg border-2 border-swapspot-blue px-5 py-2.5 text-sm font-semibold text-swapspot-blue transition hover:bg-swapspot-blue/5 disabled:opacity-70"
+      >
+        Counter-offer
+      </button>
+      <button
+        type="button"
+        disabled={busy}
         onClick={async () => {
           setBusy(true);
-          const ok = await decline(swap.id);
+          const ok = await decline(swap.id, "decline");
           setBusy(false);
           if (ok) {
             window.setTimeout(() => {
@@ -213,7 +321,7 @@ function ProposalActions({ swap }: { swap: Swap }) {
   );
 }
 
-export function SwapDetail({ swap }: { swap: Swap }) {
+export function SwapDetail({ swap }: { swap: DetailSwap }) {
   const { goToChat, openReview } = useSwapActions();
 
   return (
@@ -301,7 +409,7 @@ export function SwapDetail({ swap }: { swap: Swap }) {
           </MetaItem>
           <MetaItem label="Received">{swap.receivedAt || "—"}</MetaItem>
           <MetaItem label="Partner">{swap.partnerName || "—"}</MetaItem>
-          <MetaItem label="Swap End">{swap.deadline || "TBD"}</MetaItem>
+          <MetaItem label="Swap End">{formatDay(swap.deadline) || "TBD"}</MetaItem>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -338,26 +446,16 @@ export function SwapDetail({ swap }: { swap: Swap }) {
             <>
               <div>
                 <p className="text-sm text-slate-500">
-                  {swap.incoming
-                    ? `${swap.partnerName}'s Offer:`
-                    : "My Offer:"}
+                  {swap.partnerName}&apos;s Offer (you learn):
                 </p>
                 <div className="mt-2">
-                  <OfferPill
-                    text={swap.offering ?? ""}
-                    tone={swap.incoming ? "partner" : "mine"}
-                  />
+                  <OfferPill text={swap.youGet ?? ""} tone="partner" />
                 </div>
               </div>
               <div>
-                <p className="text-sm text-slate-500">
-                  {swap.incoming ? "My Offer:" : "I want:"}
-                </p>
+                <p className="text-sm text-slate-500">My Offer (you teach):</p>
                 <div className="mt-2">
-                  <OfferPill
-                    text={swap.exchange ?? ""}
-                    tone={swap.incoming ? "mine" : "partner"}
-                  />
+                  <OfferPill text={swap.youGive ?? ""} tone="mine" />
                 </div>
               </div>
             </>
@@ -382,6 +480,34 @@ export function SwapDetail({ swap }: { swap: Swap }) {
         </div>
       </section>
 
+      {swap.type === "proposal" ? (
+        <div
+          className={`rounded-2xl px-5 py-4 text-sm ${
+            swap.incoming
+              ? "border border-swapspot-blue/20 bg-swapspot-blue/5 text-slate-700"
+              : "border border-slate-100 bg-slate-50 text-slate-500"
+          }`}
+        >
+          {swap.incoming
+            ? swap.counterCount > 0
+              ? `${swap.partnerName} countered your offer. Accept these terms, send another counter-offer, or decline.`
+              : `${swap.partnerName} proposed this swap. Accept it, suggest different terms with a counter-offer, or decline.`
+            : `Waiting for ${swap.partnerName} to accept, decline or counter your ${
+                swap.counterCount > 0 ? "counter-offer" : "proposal"
+              }.`}
+        </div>
+      ) : null}
+
+      {swap.type === "ongoing" || swap.type === "completed" ? (
+        <SwapPlan swapId={swap.id} readOnly={swap.type === "completed"} />
+      ) : null}
+
+      {swap.type === "ongoing" ? (
+        <MeetingsPanel swapId={swap.id} partnerId={swap.partnerId} partnerName={swap.partnerName || "your partner"} />
+      ) : null}
+
+      {swap.history && swap.history.length > 1 ? <NegotiationHistory history={swap.history} /> : null}
+
       <section className="space-y-3 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-bold text-slate-900">Swap Details</h2>
         <p className="text-sm leading-relaxed text-slate-600">
@@ -394,9 +520,21 @@ export function SwapDetail({ swap }: { swap: Swap }) {
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-900">
           {formatDeposit(swap.deposit ?? 0)}
         </div>
+        {swap.type === "proposal" && swap.depositHeld !== swap.deposit ? (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            {swap.viewerRole === "proposer"
+              ? `${swap.partnerName} asked to change the deposit from ${formatDeposit(swap.depositHeld)}. Accepting will ${
+                  swap.deposit > swap.depositHeld
+                    ? `hold ${formatDeposit(swap.deposit - swap.depositHeld)} more from your balance`
+                    : `return ${formatDeposit(swap.depositHeld - swap.deposit)} to your balance`
+                }.`
+              : `You asked to change the deposit (currently ${formatDeposit(swap.depositHeld)} held). It only changes if ${swap.partnerName} accepts.`}
+          </p>
+        ) : null}
         <p className="text-xs leading-relaxed text-slate-500">
-          This deposit is held in escrow and returned to both parties upon
-          successful swap completion. (5% platform fee)
+          Held in escrow from {swap.viewerRole === "proposer" ? "your" : `${swap.partnerName}'s`} balance
+          (the person who proposed the swap) and returned when the swap is completed, minus a 5%
+          platform fee. It can be changed in a counter-offer before the swap is accepted.
         </p>
       </section>
 

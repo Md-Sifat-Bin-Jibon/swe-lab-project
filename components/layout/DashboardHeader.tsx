@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { Avatar } from "@/components/ui/Avatar";
 
 export interface DashboardHeaderUser {
   avatar: string;
@@ -115,14 +116,12 @@ export function DashboardHeader({
             aria-haspopup="true"
             onClick={() => setMenuOpen((open) => !open)}
           >
-            {/* External avatar URLs — plain img avoids next.config remotePatterns */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Avatar
               src={user.avatar}
+              name={user.firstName}
               alt={`${user.firstName}'s profile`}
-              className="h-10 w-10 rounded-full object-cover ring-2 ring-slate-100"
-              width={40}
-              height={40}
+              size={40}
+              className="rounded-full ring-2 ring-slate-100"
             />
             <svg
               className="h-4 w-4 text-slate-500"

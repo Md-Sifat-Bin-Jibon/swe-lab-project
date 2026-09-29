@@ -6,7 +6,7 @@ import { SkillPill } from "@/components/ui/SkillPill";
 import { ChatButton } from "@/components/ui/ChatButton";
 import { SwapCountdown } from "@/features/swaps/useSwapCountdown";
 import { useSwapActions } from "@/features/swaps/SwapActionsProvider";
-import type { CompletedSwap, OngoingSwap, ProposalSwap } from "@/types";
+import type { CompletedSwap, MatchProfile, OngoingSwap, ProposalSwap } from "@/types";
 
 const starIcon = (
   <svg
@@ -101,6 +101,7 @@ export function SwapCardOngoing({
   partnerId,
   timer,
   action = "dispute",
+  tasks,
 }: OngoingSwap) {
   const { complete, openDispute } = useSwapActions();
   const [busy, setBusy] = useState(false);
@@ -127,6 +128,29 @@ export function SwapCardOngoing({
           />
         </FieldRow>
       </div>
+      {tasks && tasks.mineTotal > 0 ? (
+        <div className="mt-4 grid grid-cols-2 gap-4 rounded-xl bg-slate-50 px-4 py-3 text-xs">
+          {[
+            { label: "Your to-dos", done: tasks.mineDone, total: tasks.mineTotal },
+            { label: `${partner ?? "Partner"}'s to-dos`, done: tasks.theirsDone, total: tasks.theirsTotal },
+          ].map((p) => (
+            <div key={p.label}>
+              <div className="mb-1 flex justify-between text-slate-500">
+                <span className="truncate">{p.label}</span>
+                <span className="tabular-nums font-semibold text-slate-700">
+                  {p.done}/{p.total}
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-swapspot-blue"
+                  style={{ width: `${p.total ? (p.done / p.total) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <CardActions
         chatLabel={`Chat with ${partner}`}
         partnerId={partnerId}
@@ -158,34 +182,43 @@ export function SwapCardOngoing({
   );
 }
 
-export function SwapCardProposal({
-  id,
-  name,
-  offering,
-  exchange,
-  partnerId,
-  incoming,
-  statusLabel,
-}: ProposalSwap) {
-  const { accept, decline } = useSwapActions();
+export function SwapCardProposal(
+  props: ProposalSwap & { profile?: MatchProfile | null }
+) {
+  const { id, name, partnerId, incoming, statusLabel, youGive, youGet, counterCount } = props;
+  const { accept, decline, openCounter } = useSwapActions();
   const [busy, setBusy] = useState<"accept" | "decline" | null>(null);
 
   return (
     <article
-      className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm"
+      className={`rounded-2xl border bg-white p-5 shadow-sm ${
+        incoming ? "border-swapspot-blue/30" : "border-slate-100"
+      }`}
       data-swap-card={id}
     >
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-        {incoming ? "Incoming proposal" : "Sent proposal"} · {statusLabel}
-      </p>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FieldRow
-          label={incoming ? `${name} is offering` : "You are offering"}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {incoming ? "Needs your response" : "Waiting on " + (name || "partner")}
+        </p>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+            incoming ? "bg-swapspot-blue/10 text-swapspot-blue" : "bg-slate-100 text-slate-500"
+          }`}
         >
-          <SkillPill text={offering ?? ""} />
+          {statusLabel}
+        </span>
+        {counterCount > 0 ? (
+          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+            {counterCount} counter{counterCount === 1 ? "" : "s"}
+          </span>
+        ) : null}
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <FieldRow label="You teach">
+          <SkillPill text={youGive ?? ""} />
         </FieldRow>
-        <FieldRow label={incoming ? "In exchange for" : "You want"}>
-          <SkillPill text={exchange ?? ""} />
+        <FieldRow label={`You learn from ${name || "them"}`}>
+          <SkillPill text={youGet ?? ""} />
         </FieldRow>
       </div>
       <CardActions
@@ -207,24 +240,29 @@ export function SwapCardProposal({
                   }}
                 />
                 <ActionButton
+                  label="Counter"
+                  variant="outline"
+                  onClick={() => openCounter(props)}
+                />
+                <ActionButton
                   label="Decline"
                   variant="ghost"
                   busy={busy === "decline"}
                   onClick={async () => {
                     setBusy("decline");
-                    await decline(id);
+                    await decline(id, "decline");
                     setBusy(null);
                   }}
                 />
               </>
             ) : (
               <ActionButton
-                label="Cancel proposal"
+                label="Withdraw"
                 variant="ghost"
                 busy={busy === "decline"}
                 onClick={async () => {
                   setBusy("decline");
-                  await decline(id);
+                  await decline(id, "withdraw");
                   setBusy(null);
                 }}
               />
